@@ -1,0 +1,66 @@
+schema_version: "1.3"
+
+what: >
+  Design and spec the v2 protocol for the External Subprocess key provider in
+  `internal/encryption/`. The v2 protocol introduces: structured JSON capability
+  negotiation on startup, explicit timeout contracts with configurable deadlines,
+  a liveness/health-check handshake, and a versioned wire format that allows
+  future extension without breaking existing subprocess binaries.
+  This spec targets v1.14.0 implementation; no code changes in v1.13.0.
+
+why: >
+  The current v1 external subprocess protocol has a versioned header
+  (`"version": 1`) that signals intent to evolve, but no upgrade path or
+  capability negotiation mechanism. As organizations build custom KMS integrations
+  on this protocol, any change will silently break them. Specifying v2 now —
+  while v1 adoption is still early — gives the community a migration window and
+  ensures the protocol can grow (timeouts, streaming keys, HSM passthrough) without
+  a hard compatibility break. Defining this in v1.13.0 planning unblocks
+  organizations currently deferring adoption due to protocol stability concerns.
+
+requirements:
+  must_have:
+    - "v2 wire format documented as a formal spec in `docs/encryption/subprocess-protocol-v2.md` with request/response JSON schemas"
+    - "Capability negotiation: on subprocess start, core sends a `{\"version\": 2, \"capabilities\": [...]}` handshake; subprocess responds with accepted capabilities; negotiation failure produces a clear tfdiags.Diagnostic"
+    - "Timeout contract: core sends a `deadline_ms` field in every key request; subprocess must honor it or return an error; missing deadline treated as 5000ms default"
+    - "Liveness check: core sends a `{\"type\": \"ping\"}` message after startup; subprocess must respond `{\"type\": \"pong\"}` within the configured timeout or be killed and restarted once"
+    - "v1 subprocess binaries remain supported via protocol version downgrade: if subprocess responds with `{\"version\": 1}`, core falls back to v1 protocol without error"
+    - "New `subprocess_protocol_version` config attribute (default: `\"auto\"`) lets operators pin to `\"v1\"` or `\"v2\"` explicitly"
+
+  nice_to_have:
+    - "Streaming key derivation support: subprocess can return a stream of key chunks for large-key HSM flows"
+    - "Subprocess restart policy configuration (max retries, backoff)"
+    - "Audit log hook: core emits an OpenTelemetry span for every subprocess key request with duration and status"
+
+  out_of_scope:
+    - "Implementation of v2 in v1.13.0 (spec only)"
+    - "Deprecation or removal of v1 protocol support"
+    - "Changes to any other key provider (PBKDF2, AWS KMS, GCP KMS, Azure Key Vault, OpenBao)"
+    - "Encryption method changes (AES-GCM remains the only built-in method)"
+
+constraints:
+  business:
+    - "v1 subprocess binaries must continue to work without modification — no forced migration"
+    - "Protocol spec must be published before v1.13.0 ships so community implementors can target v2"
+  compliance:
+    - "Key material must never appear in the capability negotiation handshake or ping/pong messages"
+    - "Subprocess stdout during key operations must be consumed and discarded; only stderr is logged (at debug level)"
+  ux:
+    - "When protocol negotiation fails, the diagnostic must state which version was attempted and link to migration docs"
+    - "The `subprocess_protocol_version: auto` default must be invisible to operators who don't need to change it"
+
+success_criteria:
+  acceptance:
+    - "Protocol v2 spec document exists and passes technical review by two core contributors before v1.13.0 release"
+    - "JSON schemas for all v2 message types are valid JSON Schema Draft-07 and checked into the repo"
+    - "A reference subprocess implementation (Go, in `examples/`) implements v2 and passes a compliance test suite"
+    - "The compliance test suite is runnable via `go test ./internal/encryption/...` with a `--run=V2Compliance` filter"
+  metrics:
+    - "Number of community questions about subprocess protocol stability in v1.13.0 release thread (target: addressed proactively by spec publication)"
+    - "Adoption of v2 by at least one community-built subprocess implementation within 90 days of v1.14.0 release"
+
+context_links:
+  prd_url: ""
+  mocks_url: ""
+  research_url: ""
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-encryption-subsystem--external-subprocess-protocol-v2"

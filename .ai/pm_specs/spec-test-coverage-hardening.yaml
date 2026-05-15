@@ -1,0 +1,67 @@
+schema_version: "1.3"
+
+what: >
+  Systematically close test coverage gaps in the three highest-risk OpenTofu
+  subsystems: (1) DAG concurrent walk edge cases, (2) encryption key migration
+  paths, and (3) backend state-lock race conditions. Deliver new tests in
+  `internal/dag/`, `internal/encryption/`, and `internal/backend/` that exercise
+  the specific failure modes identified in the v1.13.0-dev handoff analysis.
+
+why: >
+  The codebase has 1,867 source files against 635 test files (coverage ratio ~0.34).
+  The three targeted subsystems have the highest blast radius if they fail silently
+  in production: DAG bugs corrupt plan order and cause incorrect infrastructure
+  changes; encryption migration failures can brick remote state; backend lock races
+  cause concurrent apply corruption. These gaps were not explicitly tracked in the
+  knowledge graph, meaning they are invisible to the release gate process. Adding
+  structured tests closes the feedback loop before v1.13.0 ships.
+
+requirements:
+  must_have:
+    - "DAG: test for mid-walk graph mutation via Walker.Update() — concurrent add and remove of a vertex while a walk is in progress must not deadlock or produce incorrect ordering"
+    - "DAG: test for Tarjan SCC cycle detection on a graph with a self-referential vertex and a graph with a two-node mutual dependency"
+    - "DAG: test that transitive reduction produces the minimal edge set on a known 10-node diamond graph"
+    - "Encryption: test that the fallback chain correctly decrypts a payload encrypted by a removed key provider, using the fallback provider"
+    - "Encryption: test that StatusMigration is set correctly when a state file is re-encrypted from one method to another"
+    - "Encryption: test that the Unencrypted method panics (or returns a typed error) when called directly rather than as a migration placeholder"
+    - "Backend locking: test that two concurrent `tofu apply` processes on the same S3 backend — one holding the lock — produce a lock-conflict diagnostic in the second process, not a silent overwrite"
+    - "Backend locking: test that a stale DynamoDB lock (TTL expired) is released and the second process proceeds without manual intervention"
+    - "All new tests must run in < 30 seconds each in CI (no real cloud resources; use localstack or in-memory fakes)"
+
+  nice_to_have:
+    - "Fuzz test for the DAG cycle detector against randomly generated directed graphs"
+    - "Property-based test for encryption round-trip: arbitrary []byte in → encrypt → decrypt → same []byte out, across all key providers"
+    - "Benchmark for dag.AcyclicGraph.Walk() at 100, 500, and 1000 nodes to establish a performance baseline"
+
+  out_of_scope:
+    - "End-to-end tests against real AWS, GCP, or Azure resources"
+    - "Coverage for subsystems outside DAG, encryption, and backend locking"
+    - "Changes to production code (tests only, unless a bug is found — in which case a separate fix PR is required)"
+    - "UI or CLI output changes"
+
+constraints:
+  business:
+    - "All new tests must be co-located with the package under test (Go convention: `*_test.go` in same package)"
+    - "Tests must not require external services; use existing test helpers (`BuildState()`, `BuildChanges()`, `OverrideForTesting()`, in-mem backend)"
+  compliance:
+    - "No real credentials, real bucket names, or real KMS key ARNs in test fixtures — use constants or generated test values"
+  ux:
+    - "Test names must follow the existing pattern `TestXxx_<scenario>` and be self-documenting without comments"
+    - "Any test that is intentionally slow must use `t.Skip` unless `-run=slow` is set"
+
+success_criteria:
+  acceptance:
+    - "All 9 must-have test cases exist, pass, and are visible in `go test -v ./internal/dag/ ./internal/encryption/ ./internal/backend/...` output"
+    - "No new test takes > 30 seconds on the CI runner (enforced via `t.Deadline()` assertion in each test)"
+    - "The DAG mid-walk mutation test passes under `go test -race` (race detector enabled)"
+    - "The encryption fallback test correctly asserts the StatusMigration value post-migration"
+    - "CI green on the targeted packages after the new tests are merged"
+  metrics:
+    - "Line coverage on `internal/dag/`, `internal/encryption/`, `internal/backend/remote-state/s3/` as reported by `go test -coverprofile` (establish baseline; target +10pp on each)"
+    - "Number of post-release bugs filed against these three subsystems in v1.13.0 (target: 0 P0, < 3 P1)"
+
+context_links:
+  prd_url: ""
+  mocks_url: ""
+  research_url: ""
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-test-framework--equivalence-test-coverage-gaps"

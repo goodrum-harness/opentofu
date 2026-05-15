@@ -1,0 +1,65 @@
+schema_version: "1.3"
+
+what: >
+  Introduce a namespaced error-code catalogue for the top-20 most frequent
+  user-facing OpenTofu diagnostics. Each `tfdiags.Diagnostic` in the catalogue
+  gains a stable string code (e.g. `E_CYCLE_DETECTED`, `E_PROVIDER_NOT_FOUND`)
+  that is emitted in JSON output mode and optionally printed in human mode as
+  a documentation deep-link. Phase 1 only: code catalogue + JSON output.
+  SARIF output is Phase 2 (v1.14.0).
+
+why: >
+  OpenTofu is increasingly used in automated pipelines (GitHub Actions, Harness,
+  GitLab CI). Today, CI systems parse diagnostic text with fragile regex because
+  there are no stable, machine-readable error identifiers. Adding error codes
+  unlocks IDE hover-to-docs, automated remediation hints, and structured CI
+  annotations — without changing human-readable output. The top-20 errors cover
+  the majority of community support requests and represent the highest ROI target.
+
+requirements:
+  must_have:
+    - "A `codes/` package (or additions to `tfdiags`) defines at least 20 named error-code constants, each with a stable string identifier, a severity (error/warning), and a one-line description"
+    - "Each code has a corresponding documentation anchor in `website/docs/errors/<code>.mdx` (or equivalent)"
+    - "In `--output=json` mode, every diagnostic in the catalogue emits a `\"code\": \"E_...\"` field alongside existing `\"detail\"` and `\"summary\"` fields"
+    - "In human output mode, diagnostics with a registered code append a single line: `  (docs: https://opentofu.org/docs/errors/<code>)` — suppressible via `--no-error-links` flag"
+    - "Existing JSON output consumers are unaffected: the `code` field is additive; unregistered diagnostics omit the field (no null/empty string)"
+    - "The top-20 catalogue must cover: cycle detection, provider not found, missing required argument, invalid provider config, lock file conflict, backend init failure, state lock timeout, type mismatch, unknown variable, module not installed"
+
+  nice_to_have:
+    - "A `tofu error <code>` subcommand that prints the full documentation for a given error code to stdout"
+    - "Error codes surfaced in `--output=json` for `tofu validate` as well as plan/apply"
+    - "GitHub Actions annotation format emitted when `CI=true` and `--output=json`"
+
+  out_of_scope:
+    - "SARIF output mode (Phase 2)"
+    - "Error codes for provider-originated diagnostics (controlled by provider authors, not core)"
+    - "Retroactive assignment of codes to all diagnostics (only the top-20 catalogue in Phase 1)"
+    - "Changes to the HCL library's own diagnostic types"
+
+constraints:
+  business:
+    - "Error code strings must be stable across patch releases — once published, a code may not be renamed or removed without a major version bump"
+    - "Documentation links must resolve at release time; broken links fail CI"
+  compliance:
+    - "No PII or user-config values in error code strings or documentation anchors"
+  ux:
+    - "Human output change (docs link line) must not break any existing snapshot tests — update snapshots as part of this work"
+    - "The `--no-error-links` flag must be honoured in all output modes"
+
+success_criteria:
+  acceptance:
+    - "All 20 catalogue errors produce a `\"code\"` field in `tofu plan --output=json` output when triggered"
+    - "`tofu validate --output=json` on a fixture with a known cycle emits `\"code\": \"E_CYCLE_DETECTED\"`"
+    - "Human output for a catalogued error includes the docs URL line"
+    - "`tofu plan --no-error-links` suppresses docs URL lines while preserving all other output"
+    - "All 20 documentation pages pass link-check in CI"
+    - "Existing JSON output snapshot tests updated and passing"
+  metrics:
+    - "Reduction in duplicate 'how do I fix X' GitHub issues within 60 days of release (target 20% reduction in top-10 FAQ issues)"
+    - "Adoption of error codes in third-party CI integrations (track via GitHub search for `E_` code strings)"
+
+context_links:
+  prd_url: ""
+  mocks_url: ""
+  research_url: ""
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-diagnostic-ux--structured-error-surfacing"

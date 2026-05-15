@@ -1,0 +1,62 @@
+schema_version: "1.3"
+
+what: >
+  Expose the experimental new execution engine (internal/engine/) via an explicit
+  opt-in CLI flag `--engine=new` on `tofu plan`, `tofu apply`, and `tofu destroy`,
+  replacing the opaque `experimentalRuntimeEnabled()` environment-variable gate.
+  Add a migration guide and update documentation.
+
+why: >
+  The new engine has been developed behind an invisible guard with no documented
+  activation path for end users. OpenTofu's community expects transparent,
+  documented opt-in paths for experimental features. Providing a named CLI flag
+  enables community beta testing at scale, accelerates feedback collection, and
+  establishes a clear promotion gate for GA in v1.14.0. Without this, the engine
+  cannot be battle-tested before it becomes the default.
+
+requirements:
+  must_have:
+    - "`--engine=new` flag accepted by `tofu plan`, `tofu apply`, and `tofu destroy`; any other command returns a clear unsupported-flag diagnostic"
+    - "When `--engine=new` is set, execution routes to `internal/engine/` rather than `internal/tofu/`"
+    - "A deprecation/preview warning is printed to stderr whenever `--engine=new` is used, stating it is experimental"
+    - "All existing integration tests (e2etest/) pass with the default engine unchanged"
+    - "A `docs/engine-migration.md` file documents activation, known limitations, and rollback procedure"
+    - "The existing undocumented environment-variable gate is removed or aliased to the new flag"
+
+  nice_to_have:
+    - "`--engine=classic` flag as explicit opt-out (for future-proofing when new engine becomes default)"
+    - "Structured diagnostic emitted when `--engine=new` encounters a feature not yet supported, rather than a panic"
+    - "CI matrix job that runs the full equivalence-tests suite against both engines"
+
+  out_of_scope:
+    - "Making `--engine=new` the default in v1.13.0"
+    - "Removing or deprecating the classic engine (`internal/tofu/`) in v1.13.0"
+    - "Any behaviour changes to the new engine itself (this spec is about access, not engine internals)"
+    - "Provider-level changes or gRPC protocol changes"
+
+constraints:
+  business:
+    - "Must not change default behaviour for any existing user — zero opt-in friction for classic engine"
+    - "Flag must appear in `tofu --help` output with an explicit EXPERIMENTAL label"
+  compliance:
+    - "The experimental warning must not be suppressible via flag; it must always appear on stderr"
+  ux:
+    - "Error message when using an unsupported command with `--engine=new` must name the unsupported command and link to docs"
+    - "Warning text must be one line; must not clutter plan/apply output in CI pipelines"
+
+success_criteria:
+  acceptance:
+    - "`tofu plan --engine=new` runs to completion on the reference fixture set in e2etest/"
+    - "`tofu plan` (no flag) produces identical output to current baseline on all equivalence-tests fixtures"
+    - "stderr contains the experimental warning string exactly once per invocation when `--engine=new` is set"
+    - "`tofu --help` lists `--engine` with an EXPERIMENTAL tag"
+    - "`docs/engine-migration.md` exists and passes link-check in CI"
+  metrics:
+    - "Count of GitHub issues filed against `--engine=new` within 30 days of release (target < 5 critical)"
+    - "Community adoption rate of `--engine=new` in release survey"
+
+context_links:
+  prd_url: ""
+  mocks_url: ""
+  research_url: ""
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-experimental-engine-promotion-path"
