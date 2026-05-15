@@ -1,0 +1,85 @@
+schema_version: "1.3"
+
+what: >
+  Deliver two complementary module system improvements:
+  (1) `TF_MODULE_CACHE_DIR` environment variable support — allow operators to
+  redirect the module installation cache to a configurable path, enabling
+  shared module caches across workspaces, CI pipelines, and monorepos
+  (GitHub #1199, accepted).
+  (2) Module package deduplication — when multiple module calls reference the
+  same source package at the same version, download and extract the package
+  exactly once and reuse the cached copy across all callers within a single
+  `tofu init` run (GitHub #1086).
+  Both features target `internal/getproviders/`, `internal/modsdir/`, and the
+  init command in `internal/command/`.
+
+why: >
+  Module management is a top pain point for teams operating OpenTofu at scale.
+  `TF_MODULE_CACHE_DIR` (#1199, 57 reactions) is already accepted but unimplemented —
+  users who run `tofu init` in hundreds of CI jobs per day download the same
+  module packages repeatedly, wasting bandwidth, time, and storage.
+  Module deduplication (#1086, 74 reactions) addresses a related problem:
+  monorepos and large module compositions that reference the same source package
+  multiple times force redundant downloads within a single init run, slowing
+  cold starts significantly. Together, these two features reduce `tofu init`
+  time for large projects by an estimated 40–80% in typical CI environments
+  and are the module-system counterpart to the existing provider cache
+  (`TF_PLUGIN_CACHE_DIR`) which users already rely on.
+
+requirements:
+  must_have:
+    - "`TF_MODULE_CACHE_DIR` environment variable, when set, directs all module package downloads to the specified path rather than the default `.terraform/modules/` directory"
+    - "The configured cache directory is shared across workspace directories — i.e. two separate `tofu init` runs in different project directories use the same on-disk module cache if they point to `TF_MODULE_CACHE_DIR`"
+    - "Cache invalidation: a module package is re-downloaded only when the resolved version or source URL changes; a content-hash check prevents silent cache corruption"
+    - "The cache directory path supports environment variable expansion (e.g. `$HOME/.tofu/module-cache`)"
+    - "When `TF_MODULE_CACHE_DIR` is set, `tofu init -upgrade` forces re-download of all cached module packages (same semantics as `TF_PLUGIN_CACHE_DIR` with providers)"
+    - "Module deduplication: within a single `tofu init` execution, identical (source, version) pairs are downloaded once and hard-linked or symlinked into each calling module's `.terraform/modules/<key>/` directory"
+    - "Deduplication is transparent — `tofu init` output shows 'Installing <module> (reusing cached copy)' rather than 'Downloading' for deduplicated packages"
+    - "Deduplication works for registry sources, Git sources, and filesystem sources"
+    - "Both features degrade gracefully: if `TF_MODULE_CACHE_DIR` is unset, behaviour is identical to current; if hard-linking fails (cross-device), fall back to copy"
+    - "Documentation updated for `tofu init` flags and environment variable reference page"
+
+  nice_to_have:
+    - "`--module-cache-dir=<path>` CLI flag as an alternative to the environment variable (lower precedence)"
+    - "A `tofu init --show-cache-stats` flag that prints cache hit/miss counts and total bytes saved"
+    - "Shared module cache locking (flock) to prevent corruption when multiple `tofu init` processes share `TF_MODULE_CACHE_DIR` concurrently"
+    - "SHA-256 content hash stored in a `.tofu-cache-manifest.json` file in the cache directory for auditing"
+
+  out_of_scope:
+    - "Module locking / version pinning in a `modules.lock.hcl` file (GitHub #586 — deferred, pending RFC)"
+    - "Module distribution via OCI registries (separate feature)"
+    - "Provider cache changes (existing `TF_PLUGIN_CACHE_DIR` is unchanged)"
+    - "Remote module source authentication changes"
+    - "Changes to the `.terraform.lock.hcl` provider lock file format"
+
+constraints:
+  business:
+    - "Zero change to default behaviour when `TF_MODULE_CACHE_DIR` is unset — existing CI pipelines must not be affected"
+    - "The feature must follow the same security model as `TF_PLUGIN_CACHE_DIR`: if the cache directory is not writable, `tofu init` must fail with a clear diagnostic, not silently fall back"
+    - "No new config block required in `backend {}` or `terraform {}` — environment variable only for cache dir (consistent with provider cache convention)"
+  compliance:
+    - "Module source credentials (git tokens, registry API keys) must not be written to the cache directory manifest"
+    - "Hard-links and symlinks used for deduplication must not cross security boundaries — the cache directory must be on the same filesystem as the project, or the operator must explicitly set a cross-device path"
+  ux:
+    - "`tofu init` output must clearly indicate when a module is served from cache vs downloaded — no silent cache hits that mask stale versions"
+    - "Error message when the cache directory is not writable must include the path and suggest `chmod` or `TF_MODULE_CACHE_DIR` override"
+
+success_criteria:
+  acceptance:
+    - "Setting `TF_MODULE_CACHE_DIR=/tmp/tofu-cache` and running `tofu init` in two separate project directories that reference the same module version results in exactly one network download"
+    - "Running `tofu init` a second time in the same project with an unchanged module set and a populated cache completes in < 2 seconds and emits 'reusing cached copy' for all modules"
+    - "`tofu init -upgrade` with `TF_MODULE_CACHE_DIR` set forces re-download and updates the cache"
+    - "A module referenced three times in a single root module (via different local names) is downloaded once and the init completes successfully"
+    - "Removing the cache directory and re-running `tofu init` succeeds (cache is rebuilt)"
+    - "All existing `internal/command/` init tests pass unchanged"
+    - "New integration test: two concurrent `tofu init` processes sharing `TF_MODULE_CACHE_DIR` both succeed without file corruption (flock test)"
+  metrics:
+    - "`tofu init` wall-clock time on a reference 50-module project with cold cache vs warm cache (target: warm cache < 10% of cold cache time)"
+    - "GitHub issue #1199 closed as resolved; measure resolution thread engagement as proxy for user adoption"
+    - "CI pipeline time reduction reported by early adopters in release thread (target: at least 3 community reports of > 30% init speedup)"
+
+context_links:
+  prd_url: "https://github.com/opentofu/opentofu/issues/1199"
+  mocks_url: ""
+  research_url: "https://github.com/opentofu/opentofu/issues/1086"
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-module-system--deduplication-and-cache-dir-before-locking-1086-1199-586"

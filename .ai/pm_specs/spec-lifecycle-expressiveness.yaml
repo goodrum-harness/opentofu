@@ -1,0 +1,77 @@
+schema_version: "1.3"
+
+what: >
+  Extend OpenTofu's lifecycle block evaluation context to support variable
+  references and computed expressions. Specifically:
+  (1) Allow input variables and local values to be used in `prevent_destroy`,
+  `create_before_destroy`, and `ignore_changes` lifecycle arguments (GitHub #1329).
+  (2) Allow arbitrary attribute path expressions — including splats and function
+  calls — in `ignore_changes` lists (GitHub #2525).
+  Both changes are delivered as a unified evaluation-context enhancement in
+  `internal/configs/` and the plan engine.
+
+why: >
+  Lifecycle blocks are the most commonly cited HCL expressiveness limitation in
+  the OpenTofu issue tracker. #1329 (variables in lifecycle, 171 reactions) and
+  #2525 (arbitrary expressions in `ignore_changes`, 86 reactions) together
+  represent 257 reactions — the highest aggregate demand for any language
+  enhancement. Today, users work around these limitations with code duplication
+  (hardcoded `prevent_destroy = true/false` in each resource) or by splitting
+  resources across modules to vary lifecycle behaviour. These workarounds
+  increase config complexity and make environment-specific teardown protection
+  impossible to express cleanly. The fix is bounded: lifecycle attributes are
+  evaluated once per resource during plan; extending the evaluation context
+  to include module-level variables does not require runtime re-evaluation
+  or DAG changes.
+
+requirements:
+  must_have:
+    - "Input variables (`var.*`) and local values (`local.*`) resolve correctly when referenced in `prevent_destroy`, `create_before_destroy`, and `replace_triggered_by` lifecycle arguments"
+    - "Input variables and local values resolve correctly when referenced as attribute paths in `ignore_changes` lists (e.g. `ignore_changes = [var.ignored_attrs]` where `var.ignored_attrs` is a list of attribute names)"
+    - "Arbitrary attribute path expressions are valid in `ignore_changes`, including: nested attribute paths (`tags.Name`), splat expressions (`tags[*]`), and index expressions (`list_attr[0]`)"
+    - "A clear diagnostic is emitted (not a panic) when an `ignore_changes` expression cannot be statically resolved at plan time — specifically when it references a computed or unknown value"
+    - "The existing behaviour of `ignore_changes = all` is unchanged"
+    - "All changes are backwards-compatible: existing configs with literal values in lifecycle blocks continue to work without modification"
+    - "Equivalence tests added for: variable-driven `prevent_destroy`, variable-driven `ignore_changes` list, splat expression in `ignore_changes`, and invalid (computed) expression producing a diagnostic"
+
+  nice_to_have:
+    - "Support for `count.index` and `each.key`/`each.value` in lifecycle expressions within `for_each`/`count` resource blocks"
+    - "A clear error message (with suggested remediation) when a user attempts to use a provider-computed attribute (e.g. `self.id`) in `ignore_changes` — this is still out of scope but should fail gracefully"
+    - "Documentation examples showing environment-based `prevent_destroy` pattern (e.g. `prevent_destroy = var.environment == \"production\"`)"
+
+  out_of_scope:
+    - "Dynamic lifecycle blocks (lifecycle attributes that change value after initial apply)"
+    - "Using resource `self` references or provider-computed attributes in lifecycle expressions"
+    - "Extending lifecycle expressiveness to provisioner blocks"
+    - "New lifecycle arguments beyond those listed above"
+    - "Changes to provider-side lifecycle handling"
+
+constraints:
+  business:
+    - "No breaking changes to existing lifecycle block syntax or semantics"
+    - "Lifecycle evaluation must remain static (evaluated once at plan time, not per-apply); this constraint is architectural and must not be relaxed"
+  compliance:
+    - "Sensitive variables referenced in lifecycle expressions must not appear in plan output or log output — mask as `(sensitive value)`"
+  ux:
+    - "Error diagnostics for invalid lifecycle expressions must reference the specific attribute (e.g. 'ignore_changes entry at index 2') and suggest using a literal string path instead"
+    - "The change must be transparent to users who do not use the new capability — no output changes for existing configs"
+
+success_criteria:
+  acceptance:
+    - "A resource with `prevent_destroy = var.is_production` correctly prevents destroy when `var.is_production = true` and allows it when `false`"
+    - "A resource with `ignore_changes = [var.ignore_list]` (where `var.ignore_list = [\"tags\"]`) ignores changes to the `tags` attribute during plan"
+    - "A resource with `ignore_changes = [tags[*]]` ignores changes to all tag keys"
+    - "Using a computed attribute (e.g. `aws_instance.id`) in `ignore_changes` produces a clear diagnostic with a non-zero exit code, not a panic"
+    - "All new equivalence-test fixtures pass under `go test ./testing/equivalence-tests/...`"
+    - "Existing lifecycle equivalence tests continue to pass unchanged"
+    - "Sensitive variable referenced in lifecycle block appears as `(sensitive value)` in plan output"
+  metrics:
+    - "GitHub reaction count on #1329 and #2525 should be acknowledged in the release notes as closed"
+    - "Reduction in 'how do I use variables in lifecycle' support questions within 60 days (target: 30% reduction)"
+    - "Zero regressions in lifecycle-related equivalence tests post-merge"
+
+context_links:
+  prd_url: "https://github.com/opentofu/opentofu/issues/1329"
+  mocks_url: ""
+  research_url: "https://github.com/opentofu/opentofu/issues/2525"
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-variables-in-lifecycle-attributes--unified-lifecycle-expressiveness-spec-1329-2525"

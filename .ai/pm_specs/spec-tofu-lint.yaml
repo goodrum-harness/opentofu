@@ -1,0 +1,80 @@
+schema_version: "1.3"
+
+what: >
+  Implement `tofu lint` as a first-party, built-in linting command for OpenTofu
+  configurations. The command statically analyses `.tf`/`.tofu` files for
+  style violations, anti-patterns, deprecated constructs, and common
+  misconfigurations — producing structured, actionable diagnostics without
+  requiring a network connection, provider downloads, or state access.
+
+why: >
+  `tofu lint` is the second most-requested feature in the OpenTofu issue tracker
+  (GitHub #2213, 185 reactions; RFC #3999) and the top DX gap relative to
+  competing IaC tools. Today, OpenTofu users must chain third-party tools
+  (tflint, trivy, checkov) to catch problems that the core tool could surface
+  natively. First-party linting removes this fragmentation, enables consistent
+  CI gate behaviour, and gives the core team control over lint rule evolution
+  as the language grows. The existing `tofu validate` command only checks
+  syntax and type correctness — it deliberately does not enforce style or
+  warn about anti-patterns. `tofu lint` fills that gap without conflating
+  validation with policy.
+
+requirements:
+  must_have:
+    - "A `tofu lint [path]` command that analyses all `.tf`/`.tofu` files in the given directory (default: current directory) and its subdirectories recursively"
+    - "Exit code 0 when no lint violations are found; exit code 1 when violations are found; exit code 2 for fatal errors (unreadable files, parse failures)"
+    - "Human output mode: grouped by file, each violation shows file path, line:col, rule ID, severity (error/warning/info), and a one-line message"
+    - "`--output=json` flag emits a JSON array of violation objects with fields: `file`, `line`, `col`, `rule_id`, `severity`, `message`, `detail` — suitable for CI annotation tools"
+    - "A minimum initial rule set of 15 rules covering: unused variables, unused locals, deprecated `terraform` block alias, missing `description` on variables/outputs, hardcoded credentials patterns, overly permissive `cidr_block = \"0.0.0.0/0\"` in security groups, `count = 0` anti-pattern, empty lifecycle blocks, `depends_on` on data sources, duplicate resource labels, missing `required_providers` version constraints, `ignore_changes = all` usage, module sources without version pins, sensitive variables without `sensitive = true`, and empty `dynamic` blocks"
+    - "`--rule=<id>` flag to enable a specific rule; `--skip-rule=<id>` flag to suppress a rule; both flags are repeatable"
+    - "`--fix` flag (dry-run by default with `--fix --dry-run`) for auto-remediable rules (style and formatting rules only)"
+    - "Rules configurable via `.tofurc` or a `lint` block in `tofu.lint.hcl` config file in the project root"
+    - "`tofu lint --list-rules` prints all available rules with their IDs, severity, and a one-line description"
+
+  nice_to_have:
+    - "Plugin mechanism for user-defined lint rules (loaded from a `lint_plugins` directory or registry)"
+    - "`--output=sarif` for SARIF 2.1 output consumable by GitHub Code Scanning and IDE extensions"
+    - "Integration with `tofu fmt` so `--fix` delegates formatting fixes to the existing formatter"
+    - "`tofu lint` respects `.gitignore` patterns to skip generated or vendored files"
+    - "Per-file and per-block `# tofu:lint:ignore <rule_id>` inline suppression comments"
+
+  out_of_scope:
+    - "Security policy enforcement (use OPA/Sentinel/Checkov for policy-as-code)"
+    - "Provider-specific lint rules (provider authors can publish lint plugins)"
+    - "Runtime validation (use `tofu validate` for type/schema correctness)"
+    - "Automatic state or provider access during lint"
+    - "Lint rules that require network access"
+
+constraints:
+  business:
+    - "Must not duplicate `tofu validate` behaviour — lint is about conventions and anti-patterns, not schema correctness"
+    - "Rule IDs must be stable across patch releases; deprecated rules emit a warning but continue to function for two minor versions"
+    - "Default rule set must have zero false positives on the OpenTofu's own codebase test fixtures"
+  compliance:
+    - "Credential detection rules must not log or output the matched value — report only file/line/col"
+    - "No network calls during lint execution"
+  ux:
+    - "Output is human-readable by default with colour-coded severity; colour disabled when `NO_COLOR=1` or when stdout is not a TTY"
+    - "`tofu lint` must complete in < 5 seconds on a 500-file module tree on a modern laptop"
+    - "Each rule violation message must end with a short remediation hint or link to docs"
+
+success_criteria:
+  acceptance:
+    - "`tofu lint` on a deliberately bad fixture file triggers at least 10 of the 15 initial rules and exits with code 1"
+    - "`tofu lint` on the OpenTofu's own equivalence-test fixtures exits with code 0 (no false positives)"
+    - "`tofu lint --output=json` produces valid JSON with all required fields for each violation"
+    - "`--skip-rule=<id>` suppresses the specified rule and does not appear in output"
+    - "`tofu lint --list-rules` prints a table with ID, severity, and description for all 15+ rules"
+    - "`tofu lint --fix --dry-run` prints proposed changes without modifying files"
+    - "Performance: < 5 seconds on a synthetic 500-file tree in CI"
+    - "Docs page for `tofu lint` passes docs-lint in CI, including per-rule reference entries"
+  metrics:
+    - "Adoption: tofu lint invocations reported in telemetry within 30 days of release (target: top-5 command by usage)"
+    - "Reduction in GitHub issues asking 'how do I enforce style X' (target: 25% reduction in style/convention questions within 60 days)"
+    - "Third-party lint tool mentions in new OpenTofu issues (target: declining trend)"
+
+context_links:
+  prd_url: "https://github.com/opentofu/opentofu/issues/2213"
+  mocks_url: ""
+  research_url: "https://github.com/opentofu/opentofu/issues/3999"
+  decisions_url: ".ai/pm_specs/decisions.md#2026-05-15-tofu-lint--spec-as-standalone-v113x-feature-2213-3999"
