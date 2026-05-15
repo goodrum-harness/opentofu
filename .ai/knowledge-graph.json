@@ -1,0 +1,920 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-05-15T00:00:00Z",
+  "generated_by": "codebase-auditor@1.0.0",
+  "root": "/harness",
+  "metadata": {
+    "project": "OpenTofu",
+    "version": "1.13.0-dev",
+    "module": "github.com/opentofu/opentofu",
+    "primary_language": "go",
+    "all_languages": ["go"],
+    "framework": "none (CLI tool)",
+    "go_version": "1.26.3",
+    "total_source_files": 1867,
+    "total_test_files": 635,
+    "total_nodes": 142,
+    "total_edges": 187,
+    "total_pages_scanned": 10,
+    "entry_points": {
+      "cli": ["cmd/tofu/main.go"],
+      "config": ["version/VERSION", "version/version.go", "internal/experiments/"],
+      "backends": [
+        "internal/backend/local/",
+        "internal/backend/remote/",
+        "internal/backend/remote-state/s3/",
+        "internal/backend/remote-state/gcs/",
+        "internal/backend/remote-state/azure/",
+        "internal/backend/remote-state/consul/",
+        "internal/backend/remote-state/http/",
+        "internal/backend/remote-state/kubernetes/",
+        "internal/backend/remote-state/pg/",
+        "internal/backend/remote-state/oss/",
+        "internal/backend/remote-state/cos/",
+        "internal/backend/remote-state/inmem/"
+      ],
+      "builtin_providers": ["internal/builtin/providers/tf/"],
+      "builtin_provisioners": [
+        "internal/builtin/provisioners/file/",
+        "internal/builtin/provisioners/local-exec/",
+        "internal/builtin/provisioners/remote-exec/"
+      ]
+    },
+    "cli_commands": [
+      "init", "validate", "plan", "apply", "destroy",
+      "fmt", "get", "graph", "import", "login", "logout",
+      "metadata", "output", "providers", "refresh", "show",
+      "taint", "untaint", "test", "version",
+      "workspace", "force-unlock",
+      "state list", "state rm", "state mv", "state pull", "state push",
+      "state show", "state replace-provider"
+    ],
+    "architectural_layers": {
+      "config": [
+        "version/",
+        "internal/experiments/",
+        "cmd/tofu/"
+      ],
+      "domain": [
+        "internal/addrs/",
+        "internal/configs/",
+        "internal/plans/",
+        "internal/states/"
+      ],
+      "infrastructure": [
+        "internal/backend/",
+        "internal/providers/",
+        "internal/getproviders/",
+        "internal/plugin/",
+        "internal/plugin6/",
+        "internal/providercache/",
+        "internal/encryption/"
+      ],
+      "application": [
+        "internal/tofu/",
+        "internal/dag/",
+        "internal/lang/",
+        "internal/engine/"
+      ],
+      "presentation": [
+        "internal/command/",
+        "internal/command/views/",
+        "internal/command/arguments/"
+      ],
+      "shared": [
+        "internal/tfdiags/",
+        "internal/logging/",
+        "internal/tracing/",
+        "internal/httpclient/",
+        "internal/terminal/",
+        "internal/collections/"
+      ]
+    }
+  },
+  "nodes": [
+    {
+      "id": "version::package",
+      "type": "module",
+      "name": "version",
+      "module_path": "version/",
+      "layer": "config",
+      "language": "go",
+      "purpose": "Provides the binary version, prerelease marker, and curated dependency list. VERSION file embedded at compile time via //go:embed. Linker-injectable 'dev' variable controls prerelease marker.",
+      "exports": ["Version string", "Prerelease string", "SemVer *version.Version", "Header string", "VersionToImpersonateForProviders string", "String() string", "InterestingDependencies() []*debug.Module"],
+      "patterns": ["linker-injectable version flag", "embedded VERSION file", "singleton init()"]
+    },
+    {
+      "id": "internal/experiments::package",
+      "type": "module",
+      "name": "experiments",
+      "module_path": "internal/experiments/",
+      "layer": "config",
+      "language": "go",
+      "purpose": "Manages opt-in language experiment flags. All currently-declared experiments are concluded (graduated or abandoned). registerCurrentExperiment is unused.",
+      "key_types": [
+        {"name": "Experiment", "kind": "type (string)", "purpose": "Typed experiment identifier"},
+        {"name": "Set", "kind": "type (map[Experiment]struct{})", "purpose": "Set of active experiments"},
+        {"name": "UnavailableError", "purpose": "Unknown experiment name"},
+        {"name": "ConcludedError", "purpose": "Experiment graduated or abandoned"}
+      ],
+      "key_functions": ["NewSet(...Experiment) Set", "SetUnion(...Set) Set", "GetCurrent(name) (Experiment, error)"],
+      "patterns": ["registry pattern", "typed string for experiment IDs", "test isolation via OverrideForTesting"]
+    },
+    {
+      "id": "cmd/tofu::main",
+      "type": "module",
+      "name": "main",
+      "module_path": "cmd/tofu/",
+      "layer": "config",
+      "language": "go",
+      "purpose": "Binary entry point. Initialises terminal, telemetry, logging, credential helpers, service discovery, OCI/module fetchers, provider source, working directory, backend init, and command dispatch.",
+      "key_functions": [
+        "main() — delegates to realMain() + os.Exit",
+        "realMain() int — full startup/teardown orchestration",
+        "initCommands(...) — builds shared Meta and command factory map",
+        "providerSource(...) getproviders.Source — assembles provider installation source chain",
+        "globalPluginDirs() []string — OS/XDG dirs for legacy plugins",
+        "newServiceDiscovery(...) *disco.Disco — service discovery client",
+        "getOCIRepositoryStore(...) ociRepositoryStore — ORAS-Go backed OCI client with per-repo cache"
+      ],
+      "patterns": [
+        "lazy command factory pattern (cli.CommandFactory)",
+        "shared Meta passed by value to all commands",
+        "two-phase CLI construction for env-var arg injection",
+        "deferred cleanup stack (pprof, tracing, plugin cleanup)",
+        "FIPS140 detection (warning only)",
+        "provider reattach via TF_REATTACH_PROVIDERS for SDK acceptance testing"
+      ]
+    },
+    {
+      "id": "internal/addrs::package",
+      "type": "module",
+      "name": "addrs",
+      "module_path": "internal/addrs/",
+      "layer": "domain",
+      "language": "go",
+      "purpose": "Defines all address types for objects in OpenTofu config and state. Immutable value types with HCL traversal-based string representations.",
+      "key_interfaces": [
+        {"name": "Referenceable", "purpose": "Types that appear as HCL expression references"},
+        {"name": "Targetable", "purpose": "Types usable as -target arguments; TargetContains for containment"},
+        {"name": "Checkable", "purpose": "Types that contain condition blocks (preconditions, postconditions)"},
+        {"name": "ConfigCheckable", "purpose": "Static config constructs declaring Checkable instances"},
+        {"name": "ProviderConfig", "purpose": "Union of LocalProviderConfig and AbsProviderConfig"},
+        {"name": "AbsMoveable", "purpose": "Types that can be source/dest of a 'moved' block"},
+        {"name": "ModuleSource", "purpose": "Union of local/registry/remote module source addresses"},
+        {"name": "InstanceKey", "purpose": "Sealed interface for count/for_each instance keys"},
+        {"name": "UniqueKeyer", "purpose": "Types usable as map/set keys via addrs.Map and addrs.Set generics"}
+      ],
+      "key_types": [
+        {"name": "Module", "kind": "[]string", "purpose": "Static module call path (no instance keys)"},
+        {"name": "ModuleInstance", "kind": "[]ModuleInstanceStep", "purpose": "Dynamic module instance path with instance keys"},
+        {"name": "Resource", "purpose": "Relative resource address (Mode+Type+Name)"},
+        {"name": "ResourceInstance", "purpose": "Resource + InstanceKey"},
+        {"name": "AbsResource", "purpose": "ModuleInstance + Resource"},
+        {"name": "AbsResourceInstance", "purpose": "ModuleInstance + ResourceInstance"},
+        {"name": "ConfigResource", "purpose": "Module + Resource (static, no instance keys)"},
+        {"name": "AbsProviderConfig", "purpose": "Module + Provider FQN + Alias"},
+        {"name": "Provider", "purpose": "Fully-qualified provider address (hostname/namespace/type)"},
+        {"name": "ResourceMode", "kind": "rune", "values": ["ManagedResourceMode", "DataResourceMode", "EphemeralResourceMode"]},
+        {"name": "DeposedKey", "kind": "string (8-char hex)", "purpose": "Identifies a deposed resource instance object"},
+        {"name": "Map[K,V]", "kind": "generic", "purpose": "Address-keyed map via UniqueKey"},
+        {"name": "Set[T]", "kind": "generic", "purpose": "Address-keyed set via UniqueKey"}
+      ],
+      "key_functions": [
+        "ParseRef(hcl.Traversal) (*Reference, tfdiags.Diagnostics)",
+        "ParseModuleInstance(hcl.Traversal) (ModuleInstance, tfdiags.Diagnostics)",
+        "ParseAbsProviderConfig(hcl.Traversal) (AbsProviderConfig, tfdiags.Diagnostics)",
+        "ParseProviderSourceString(string) (Provider, tfdiags.Diagnostics)",
+        "UnifyMoveEndpoints(module, from, to) (MoveEndpointInModule, MoveEndpointInModule)",
+        "NewProvider / NewDefaultProvider / NewBuiltInProvider / ImpliedProviderForUnqualifiedType"
+      ],
+      "patterns": [
+        "static/dynamic address pairs (Module vs ModuleInstance, ConfigResource vs AbsResource)",
+        "local/absolute address pairs (OutputValue vs AbsOutputValue)",
+        "sigil-based interface sealing (unexported sigil methods)",
+        "UniqueKey pattern for non-comparable slice types",
+        "ResourceMode discriminator unifies managed/data/ephemeral resource addressing",
+        "HCL traversal as primary parse input (preserves source ranges)",
+        "provider FQN delegation to registry-address library"
+      ]
+    },
+    {
+      "id": "internal/configs::package",
+      "type": "module",
+      "name": "configs",
+      "module_path": "internal/configs/",
+      "layer": "domain",
+      "language": "go",
+      "purpose": "HCL configuration parsing and loading. Converts .tf/.tofu/.tf.json files into a typed, validated in-memory module tree.",
+      "key_interfaces": [
+        {"name": "ModuleWalker", "purpose": "Strategy for loading child modules; production impl in configload"},
+        {"name": "Container", "purpose": "Scopes data resources inside check blocks"}
+      ],
+      "key_types": [
+        {"name": "Config", "purpose": "Node in the static module tree (parent/root/children pointers, path, version)"},
+        {"name": "Module", "purpose": "All declarations in one directory: providers, vars, locals, outputs, resources, module calls, imports, moved, removed, checks, tests"},
+        {"name": "File", "purpose": "Raw parsed contents of a single .tf file before duplicate-checking"},
+        {"name": "Resource", "purpose": "Unified for managed/data/ephemeral via Mode field; Config holds provider-specific body"},
+        {"name": "ManagedResource", "purpose": "Lifecycle fields: connection, provisioners, create_before_destroy, prevent_destroy, ignore_changes"},
+        {"name": "Provider", "purpose": "Provider config block with alias, for_each, mock/override support"},
+        {"name": "Variable", "purpose": "Input variable: type constraints, sensitive/ephemeral/const/nullable flags, validations"},
+        {"name": "Output", "purpose": "Output value: sensitivity, ephemerality, deprecation, preconditions"},
+        {"name": "ModuleCall", "purpose": "Module block call: source (statically decoded), version, variables (closure), count/for_each/enabled"},
+        {"name": "CheckRule", "purpose": "Reusable validation/precondition/postcondition rule"},
+        {"name": "Import", "purpose": "import block: ID or Identity, static/dynamic To address, for_each"},
+        {"name": "Moved / Removed", "purpose": "State address rename and forget/destroy blocks"},
+        {"name": "StaticEvaluator", "purpose": "Evaluates HCL at config-load time (locals, const vars, path.*, terraform.workspace only)"},
+        {"name": "StaticModuleCall", "purpose": "Context for static evaluation: module addr, variable resolver fn, workspace, root path"},
+        {"name": "Parser", "purpose": "Entry point for reading files/dirs; afero-backed for testability"},
+        {"name": "SelectiveLoader", "kind": "int enum", "values": ["SelectiveLoadAll", "SelectiveLoadBackend", "SelectiveLoadEncryption"]}
+      ],
+      "key_functions": [
+        "BuildConfig(ctx, root *Module, walker ModuleWalker) (*Config, hcl.Diagnostics)",
+        "NewModule(primaryFiles, overrideFiles, call, sourceDir, loader) (*Module, hcl.Diagnostics)",
+        "NewParser(fs afero.Fs) *Parser",
+        "Parser.LoadConfigDir(path, call) (*Module, hcl.Diagnostics)",
+        "Config.ProviderRequirements() (getproviders.Requirements, ...)",
+        "Config.VerifyDependencySelections(depLocks) []error",
+        "Config.ResolveAbsProviderAddr(addr, inModule) addrs.AbsProviderConfig",
+        "Config.TransformForTest(run, file, evalCtx) (func(), hcl.Diagnostics)"
+      ],
+      "patterns": [
+        "two-phase File→Module merge with override file semantics",
+        "partial HCL body extraction (PartialContent) passes provider-specific config through",
+        "static evaluation at config load time for module sources/versions/backend/for_each",
+        "stack-based circular reference detection in staticScopeData",
+        "provider type resolution in a separate post-BuildConfig pass",
+        "reversible testing mutations via TransformForTest reset closures",
+        "selective loading via SelectiveLoader for fast partial parsing",
+        "ModuleWalker strategy pattern for child module loading",
+        "resource meta-argument escaping via '_' block",
+        "afero filesystem abstraction for testability",
+        "HCL diagnostics accumulation (no early-exit on first error)"
+      ]
+    },
+    {
+      "id": "internal/plans::package",
+      "type": "module",
+      "name": "plans",
+      "module_path": "internal/plans/",
+      "layer": "domain",
+      "language": "go",
+      "purpose": "Represents a planned set of infrastructure changes. Separates 'what will happen' from 'what has happened' (state). Dual-form pattern: decoded (cty.Value) and serialized (DynamicValue/Src) forms for every change type.",
+      "key_types": [
+        {"name": "Plan", "purpose": "Top-level plan: UIMode, VariableValues, Changes, PriorState, PrevRunState, PlannedState, Checks, Timestamp"},
+        {"name": "Changes", "purpose": "Container for all planned resource/output changes"},
+        {"name": "ChangesSync", "purpose": "Mutex-protected Changes wrapper for concurrent graph-walk use"},
+        {"name": "Change", "purpose": "Decoded before/after snapshot of a single change (cty.Value forms)"},
+        {"name": "ChangeSrc", "purpose": "Serialized (msgpack) counterpart of Change; marks stored separately"},
+        {"name": "ResourceInstanceChange / ResourceInstanceChangeSrc", "purpose": "Per-resource-instance change with addr, provider, action, private bytes"},
+        {"name": "OutputChange / OutputChangeSrc", "purpose": "Per-output change"},
+        {"name": "DynamicValue", "kind": "[]byte", "purpose": "Msgpack-encoded cty.Value; nil = Go-level absence (distinct from cty null)"},
+        {"name": "Action", "kind": "rune", "values": ["NoOp", "Create", "Read", "Update", "DeleteThenCreate", "CreateThenDelete", "Delete", "Forget", "ForgetThenCreate"]},
+        {"name": "Mode", "kind": "rune", "values": ["NormalMode", "DestroyMode", "RefreshOnlyMode"]},
+        {"name": "ResourceInstanceChangeActionReason", "purpose": "UI-only explanation of why an action was chosen (rune enum with 18 values)"}
+      ],
+      "key_functions": [
+        "NewChanges() *Changes",
+        "NewDynamicValue(cty.Value, cty.Type) (DynamicValue, error)",
+        "(*Plan).CanApply() bool",
+        "(*Changes).SyncWrapper() *ChangesSync",
+        "(*ResourceInstanceChange).Simplify(destroying bool) *ResourceInstanceChange",
+        "(*ChangesSync).AppendResourceInstanceChange / GetResourceInstanceChange / RemoveResourceInstanceChange"
+      ],
+      "patterns": [
+        "dual-form: decoded (cty.Value) vs serialized (DynamicValue) pairs with Encode/Decode converters",
+        "sensitivity marks stripped before serialization, stored as []cty.PathValueMarks, restored at decode",
+        "deep copy on every ChangesSync operation",
+        "Forget/ForgetThenCreate actions for lifecycle.destroy=false resources",
+        "DynamicValue nil ≠ cty.NullVal — callers must distinguish"
+      ]
+    },
+    {
+      "id": "internal/states::package",
+      "type": "module",
+      "name": "states",
+      "module_path": "internal/states/",
+      "layer": "domain",
+      "language": "go",
+      "purpose": "Represents post-apply known state of all managed infrastructure. Mutable data structure protected for concurrent access via SyncState.",
+      "key_types": [
+        {"name": "State", "purpose": "Root of state tree: Modules map + CheckResults"},
+        {"name": "Module", "purpose": "Per-module-instance: Resources, OutputValues, LocalValues; auto-pruned when empty"},
+        {"name": "Resource", "purpose": "Groups all instances of a single resource; ProviderConfig resource-wide"},
+        {"name": "ResourceInstance", "purpose": "Current object + Deposed objects (CBD create-before-destroy window)"},
+        {"name": "ResourceInstanceObject", "purpose": "Fully decoded in-memory form: Value, Private, Identity, Status, Dependencies"},
+        {"name": "ResourceInstanceObjectSrc", "purpose": "JSON-serialized form with SchemaVersion; supports flatmap legacy"},
+        {"name": "ObjectStatus", "kind": "rune", "values": ["ObjectReady", "ObjectTainted", "ObjectPlanned"]},
+        {"name": "SyncState", "purpose": "RWMutex-protected wrapper; returns deep copies on all reads"},
+        {"name": "CheckResults / CheckResultAggregate / CheckResultObject", "purpose": "Immutable snapshot of check statuses"},
+        {"name": "DeposedKey", "kind": "string (8-char hex)", "purpose": "Per-instance deposed object identifier"}
+      ],
+      "key_functions": [
+        "NewState() *State",
+        "BuildState(func(*SyncState)) *State",
+        "(*State).SyncWrapper() *SyncState",
+        "(*State).DeepCopy() *State",
+        "(*Module).SetResourceInstanceCurrent / SetResourceInstanceDeposed / ForgetResourceInstanceAll",
+        "(*SyncState).DeposeResourceInstanceObject(addr) DeposedKey",
+        "(*SyncState).RemovePlannedResourceInstanceObjects()",
+        "NewCheckResults(*checks.State) *CheckResults"
+      ],
+      "patterns": [
+        "dual-form: ResourceInstanceObject (decoded) vs ResourceInstanceObjectSrc (JSON bytes)",
+        "immutability by convention: objects not mutated after creation; new objects replace old",
+        "auto-pruning: non-root empty modules deleted automatically",
+        "SyncState returns deep copies on every read",
+        "ObjectPlanned status is transient; cleaned up before next phase",
+        "DeposedKey random allocation; callers must retry on collision",
+        "move operations first-class on State (MoveAbsResource, MoveAbsResourceInstance, etc.)",
+        "TransientPathValueMarks carry non-persistent marks through internal state",
+        "Deferred bool on ResourceInstanceObject for ephemeral resource state"
+      ]
+    },
+    {
+      "id": "internal/backend::interfaces",
+      "type": "module",
+      "name": "backend",
+      "module_path": "internal/backend/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Defines core backend contract interfaces and shared operation types used by all backends.",
+      "key_interfaces": [
+        {"name": "Backend", "purpose": "Minimal contract: ConfigSchema, PrepareConfig, Configure, StateMgr, DeleteWorkspace, Workspaces"},
+        {"name": "Enhanced", "embeds": "Backend", "purpose": "Adds Operation() and ServiceDiscoveryAliases(); internal extension for local/remote backends only"},
+        {"name": "Local", "purpose": "Optional: LocalRun() for backends supporting local execution (console, import, graph, etc.)"}
+      ],
+      "key_types": [
+        {"name": "Operation", "purpose": "Maximally-general operation parameter struct (Type, Config, Changes, State, Targets, Variables, View, etc.)"},
+        {"name": "RunningOperation", "purpose": "Returned from Enhanced.Operation(); embeds context.Context; Stop/Cancel CancelFuncs"},
+        {"name": "LocalRun", "purpose": "Snapshot of resolved objects for a local operation: Core, Config, InputState, PlanOpts, Plan"},
+        {"name": "OperationResult", "kind": "int", "values": ["OperationSuccess=0", "OperationFailure=1"]}
+      ],
+      "patterns": [
+        "three-phase lifecycle: ConfigSchema (static) → PrepareConfig (validate) → Configure (live setup)",
+        "Backend is state-storage only; Enhanced is compute extension (internal only)",
+        "graceful shutdown via three-context layering: ctx (values), stopCtx (graceful), cancelCtx (immediate)"
+      ]
+    },
+    {
+      "id": "internal/backend/local::Local",
+      "type": "class",
+      "name": "Local",
+      "module_path": "internal/backend/local/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Built-in local backend. Performs all operations (plan, apply, refresh) in-process. Also acts as execution engine for remote-state backends that lack compute (via NewWithBackend).",
+      "implements": ["backend.Backend", "backend.Enhanced", "backend.Local"],
+      "key_methods": [
+        "Operation(ctx, op) (*RunningOperation, error) — dispatches to opPlan/opApply/opRefresh in goroutine",
+        "opPlan(...) — runs Core.Plan() in goroutine, optionally saves plan file, renders output",
+        "opApply(...) — optionally plans, prompts approval, runs Core.Apply(), persists state; backupStateForError on failure",
+        "LocalRun(ctx, stopCtx, op) (*LocalRun, statemgr.Full, tfdiags.Diagnostics)",
+        "StateMgr(ctx, name) — creates statemgr.FilesystemBetweenPaths"
+      ],
+      "patterns": [
+        "when Backend field non-nil (NewWithBackend), all state ops delegate to it",
+        "operations run in goroutine; opWait handles stop/cancel signals",
+        "backupStateForError writes errored.tfstate as last resort",
+        "StateHook provides periodic state persistence (default 20s, TF_STATE_PERSIST_INTERVAL)"
+      ]
+    },
+    {
+      "id": "internal/backend/remote::Remote",
+      "type": "class",
+      "name": "Remote",
+      "module_path": "internal/backend/remote/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Remote backend delegating operations to Terraform Cloud/Enterprise via TFE API. Falls back to local execution when forceLocal or workspace execution mode is 'local'.",
+      "implements": ["backend.Backend", "backend.Enhanced", "backend.Local"],
+      "key_methods": [
+        "Configure(ctx, obj) — discovers TFE service URL, creates tfe.Client, checks org entitlements",
+        "Operation(ctx, op) — checks forceLocal/execution mode, dispatches to b.local or TFE API",
+        "VerifyWorkspaceTerraformVersion(name) tfdiags.Diagnostics — semver compatibility check",
+        "IsLocalOperations() bool"
+      ],
+      "patterns": [
+        "TF_FORCE_LOCAL_BACKEND forces local execution regardless of entitlements",
+        "version check: pre-0.14 exact match; 0.14-1.3 both <1.3; >=1.3 same major.minor",
+        "ServiceDiscoveryAliases maps localtofu.com → configured hostname"
+      ]
+    },
+    {
+      "id": "internal/backend/remote-state/s3::Backend",
+      "type": "class",
+      "name": "S3Backend",
+      "module_path": "internal/backend/remote-state/s3/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Remote state backend using AWS S3 + optional DynamoDB/S3-lockfile for distributed locking.",
+      "implements": ["backend.Backend"],
+      "patterns": [
+        "dual locking: S3 lock file (IfNoneMatch:*) AND/OR DynamoDB (ConditionExpression)",
+        "MD5 consistency loop in Get(): retries 10s if returned MD5 mismatches DynamoDB-stored MD5",
+        "workspace key layout: default→keyName; non-default→prefix/name/keyName",
+        "awsbase.GetAwsConfig() centralises all credential resolution",
+        "SHA256 checksum on PutObject; skipS3Checksum for third-party S3-compatible APIs"
+      ]
+    },
+    {
+      "id": "internal/backend/remote-state/gcs::Backend",
+      "type": "class",
+      "name": "GCSBackend",
+      "module_path": "internal/backend/remote-state/gcs/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Remote state backend using Google Cloud Storage with GCS object metadata-based locking.",
+      "implements": ["backend.Backend"],
+      "patterns": ["legacy schema.Backend helper (ConfigureFunc pattern)", "CSEK vs CMEK encryption mutually exclusive", "service account impersonation delegation chain", "sovereign cloud via universe_domain"]
+    },
+    {
+      "id": "internal/backend/remote-state/azure::Backend",
+      "type": "class",
+      "name": "AzureBackend",
+      "module_path": "internal/backend/remote-state/azure/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Remote state backend using Azure Blob Storage with blob lease/conditional PUT locking.",
+      "implements": ["backend.Backend"],
+      "patterns": ["legacy schema.Backend helper", "8 auth methods: Shared Key, SAS, CLI, SP+secret, SP+cert, MSI, OIDC, ADO, AKS workload identity", "blob snapshot option", "CPK/encryption scope mutually exclusive"]
+    },
+    {
+      "id": "internal/providers::Interface",
+      "type": "module",
+      "name": "providers",
+      "module_path": "internal/providers/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Defines the core Provider interface and all request/response types for provider plugin communication.",
+      "key_interfaces": [
+        {"name": "Unconfigured", "purpose": "Pre-configure provider methods: schema retrieval, validation, function calls, lifecycle"},
+        {"name": "Configured", "embeds": "Unconfigured", "purpose": "Full provider capability: CRUD, import, ephemeral resources, identity operations"},
+        {"name": "Interface", "note": "Alias for Configured; canonical type used throughout core"}
+      ],
+      "key_types": [
+        {"name": "Schema", "purpose": "Pairs schema block with version number for a resource/datasource type"},
+        {"name": "GetProviderSchemaResponse", "purpose": "Complete provider schema: ResourceTypes, DataSources, EphemeralResources, Functions, ServerCapabilities"},
+        {"name": "ServerCapabilities", "purpose": "Optional features: PlanDestroy, GetProviderSchemaOptional"},
+        {"name": "FunctionSpec / FunctionParameterSpec", "purpose": "Provider-defined function descriptor"},
+        {"name": "ImportTarget", "purpose": "Either string ID (legacy) or structured Identity (new)"},
+        {"name": "OpenEphemeralResourceResponse", "purpose": "Result + RenewAt hint for ephemeral resource lifecycle"},
+        {"name": "Factory", "kind": "func() (Interface, error)", "purpose": "Provider instance constructor"},
+        {"name": "SchemaCache", "purpose": "sync.Once-backed shared schema cache across instances"}
+      ],
+      "patterns": [
+        "Open/Renew/Close ephemeral resource lifecycle",
+        "Identity alongside state for all resource operations (OpenTofu extension)",
+        "GetProviderSchemaOptional server capability reduces schema fetch calls",
+        "FactoryFixed wraps a shared instance for testing"
+      ]
+    },
+    {
+      "id": "internal/getproviders::package",
+      "type": "module",
+      "name": "getproviders",
+      "module_path": "internal/getproviders/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Provider discovery, version resolution, package metadata, authentication, and installation source abstractions.",
+      "key_interfaces": [
+        {"name": "Source", "purpose": "Enumerate versions + fetch PackageMeta for a specific version+platform"},
+        {"name": "PackageLocation", "purpose": "A location from which a provider package can be fetched"},
+        {"name": "PackageAuthentication", "purpose": "Verifies a downloaded or locally cached package is authentic"}
+      ],
+      "key_types": [
+        {"name": "PackageMeta", "purpose": "All metadata to install a provider: Provider, Version, Platform, Location, Authentication"},
+        {"name": "Requirements", "kind": "map[addrs.Provider]VersionConstraints", "purpose": "Full set of provider version requirements"},
+        {"name": "Selections", "kind": "map[addrs.Provider]Version", "purpose": "Result of version resolution"},
+        {"name": "Hash", "kind": "string", "purpose": "Scheme-prefixed content hash: h1: (dir) or zh: (zip SHA256)"},
+        {"name": "MultiSource", "purpose": "Composes Sources with include/exclude wildcard patterns; first match wins"},
+        {"name": "RegistrySource", "purpose": "Origin provider registry via service discovery"},
+        {"name": "FilesystemMirrorSource", "purpose": "Local filesystem directory mirror"},
+        {"name": "HTTPMirrorSource", "purpose": "Network mirror using OpenTofu HTTP mirror protocol"},
+        {"name": "OCIRegistryMirrorSource", "purpose": "OCI Distribution v1.1 registry mirror"},
+        {"name": "MemoizeSource", "purpose": "Caches AvailableVersions and PackageMeta responses"}
+      ],
+      "key_functions": [
+        "PackageHashV1(loc) (Hash, error) — canonical h1: hash",
+        "PackageAuthenticationAll(...PackageAuthentication) PackageAuthentication — combinator",
+        "NewSignatureAuthentication(...) — OpenPGP authenticator",
+        "ShouldEnforceGPGValidationForProvider(addr) bool"
+      ],
+      "patterns": [
+        "chain-of-responsibility source resolution (local → registry fallback)",
+        "dual hash schemes: h1: (dir hash) and zh: (zip SHA256 legacy)",
+        "GPG signing relaxed for registry.opentofu.org/hashicorp/* (TF-compat), enforced otherwise",
+        "OCI artifact type: application/vnd.opentofu.provider",
+        "SupportedPluginProtocols = '>= 5, <7'"
+      ]
+    },
+    {
+      "id": "internal/plugin::GRPCProvider",
+      "type": "class",
+      "name": "GRPCProvider",
+      "module_path": "internal/plugin/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Core-side gRPC client for a provider plugin (protocol v5). Implements providers.Interface. Translates request/response types to/from tfplugin5 proto messages.",
+      "implements": ["providers.Interface"],
+      "key_methods": [
+        "GetProviderSchema() — uses SchemaCache (sync.Once); forces raw GetSchema for legacy providers",
+        "ApplyResourceChange() — wraps context.WithoutCancel for graceful shutdown via Stop()",
+        "Close() — calls PluginClient.Kill() to terminate subprocess"
+      ],
+      "patterns": [
+        "all DynamicValue payloads as msgpack (primary) or JSON (legacy fallback)",
+        "clientCapabilities: WriteOnlyAttributesAllowed=true",
+        "Identity data alongside DynamicValue for new OpenTofu features",
+        "grpcErr() maps gRPC status codes to tfdiags.Diagnostics",
+        "64MB max gRPC receive size for large provider schemas"
+      ]
+    },
+    {
+      "id": "internal/plugin6::GRPCProvider",
+      "type": "class",
+      "name": "GRPCProvider_v6",
+      "module_path": "internal/plugin6/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Core-side gRPC client for provider protocol v6 (tfplugin6). Identical structure and behavior to plugin.GRPCProvider but uses tfplugin6 proto client. Registered in plugin.VersionedPlugins under key 6.",
+      "implements": ["providers.Interface"],
+      "patterns": ["protocol version negotiation via go-plugin VersionedPlugins map", "same MagicCookieKey/Value as plugin package"]
+    },
+    {
+      "id": "internal/providercache::Installer",
+      "type": "class",
+      "name": "Installer",
+      "module_path": "internal/providercache/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Orchestrates the full provider installation workflow: version query, package fetch, cache promotion, lock file update.",
+      "key_methods": [
+        "EnsureProviderVersions(ctx, locks, reqs, mode) (*depsfile.Locks, error) — three-phase: compute needed, query source (parallel), install (parallel with flock)"
+      ],
+      "key_types": [
+        {"name": "Dir", "purpose": "Local cache directory of unpacked provider packages; always single-platform"},
+        {"name": "CachedProvider", "purpose": "Single cached entry; ExecutableFile() heuristically finds binary"},
+        {"name": "InstallerEvents", "purpose": "Callback struct for UI progress notifications; Sync() wraps in mutex"}
+      ],
+      "patterns": [
+        "two-tier caching: global cache dir → target dir (LinkFromOtherCache for promotion)",
+        "per-provider-version flock files prevent concurrent installs",
+        "built-in providers validated by name; no installation needed",
+        "unmanaged providers skipped entirely",
+        "concurrent version querying and installation via sync.WaitGroup"
+      ]
+    },
+    {
+      "id": "internal/encryption::Encryption",
+      "type": "module",
+      "name": "encryption",
+      "module_path": "internal/encryption/",
+      "layer": "infrastructure",
+      "language": "go",
+      "purpose": "Pluggable state/plan encryption subsystem. Wires key providers, encryption methods, and config into per-target encryptors.",
+      "key_interfaces": [
+        {"name": "Encryption", "purpose": "State() StateEncryption, Plan() PlanEncryption, RemoteState(string) StateEncryption; Disabled() returns pass-through"},
+        {"name": "keyprovider.KeyProvider", "purpose": "Provide(decryptionMeta) → (Output, KeyMeta, error); called at both encrypt and decrypt time"},
+        {"name": "keyprovider.Descriptor", "purpose": "Factory for provider config structs; registered in Registry"},
+        {"name": "keyprovider.Config", "purpose": "HCL-tagged struct + Build() → (KeyProvider, KeyMeta, error)"},
+        {"name": "keyprovider.SelfDecodingConfig", "purpose": "Optional: custom HCL traversal for providers needing cty references (e.g. chain=)"},
+        {"name": "method.Method", "purpose": "Encrypt([]byte) ([]byte, error) + Decrypt([]byte) ([]byte, error)"},
+        {"name": "registry.Registry", "purpose": "RegisterKeyProvider/RegisterMethod + GetKeyProviderDescriptor/GetMethodDescriptor"}
+      ],
+      "key_types": [
+        {"name": "basedata", "purpose": "Envelope JSON: Meta keyProviderMetamap + Data []byte + Version string (magic sigil)"},
+        {"name": "keyprovider.Output", "purpose": "EncryptionKey + DecryptionKey byte slices; also cty.Value for chain= support"},
+        {"name": "keyprovider.MetaStorageKey", "kind": "string", "purpose": "Key in envelope meta map"},
+        {"name": "EncryptionStatus", "values": ["StatusUnknown", "StatusSatisfied", "StatusMigration"]}
+      ],
+      "built_in_key_providers": [
+        {"id": "pbkdf2", "purpose": "PBKDF2-SHA512/SHA256 from passphrase or chained key; stores salt+iterations+hashfn in metadata"},
+        {"id": "aws_kms", "purpose": "AWS KMS GenerateDataKey; stores ciphertext blob in metadata"},
+        {"id": "gcp_kms", "purpose": "GCP KMS Encrypt/Decrypt of locally-generated key; stores ciphertext in metadata"},
+        {"id": "azure_vault", "purpose": "Azure Key Vault; stores ciphertext+IV+tag+key version in metadata"},
+        {"id": "openbao", "purpose": "OpenBao transit engine; stores ciphertext in metadata"},
+        {"id": "external", "purpose": "Subprocess protocol (JSON over stdin/stdout) with versioned header magic"}
+      ],
+      "built_in_methods": [
+        {"id": "aes_gcm", "purpose": "AES-GCM; nonce prepended to ciphertext; separate enc/dec keys for rotation"},
+        {"id": "unencrypted", "purpose": "Pass-through placeholder for migration transitions; Encrypt/Decrypt panic if called directly"},
+        {"id": "external", "purpose": "Subprocess encryption method; separate encrypt/decrypt commands configurable"}
+      ],
+      "patterns": [
+        "envelope encryption: data encrypted with data key; key metadata stored in JSON envelope alongside ciphertext",
+        "key caching: encMethod built once per apply; same keys reused for all writes (crash-safety rationale)",
+        "fallback chain: TargetConfig.Fallback linked list; StatusMigration signals re-encryption needed",
+        "circular-dependency detection via stack-based DFS in setupKeyProvider",
+        "key chaining/composition: pbkdf2 and xor accept chain= reference to upstream provider output",
+        "external process protocol: header JSON line (magic+version) + body JSON (versioned protocol v1)"
+      ]
+    },
+    {
+      "id": "internal/dag::AcyclicGraph",
+      "type": "class",
+      "name": "AcyclicGraph",
+      "module_path": "internal/dag/",
+      "layer": "application",
+      "language": "go",
+      "purpose": "Core directed acyclic graph with cycle detection, topological ordering, transitive reduction, and concurrent parallel walk.",
+      "key_interfaces": [
+        {"name": "Vertex", "kind": "interface{}", "purpose": "Empty interface — any value can be a vertex"},
+        {"name": "Edge", "purpose": "Directed edge with Source, Target, Hashable"},
+        {"name": "Hashable", "purpose": "Custom hash codes for set membership"},
+        {"name": "GraphNodeDynamicExpandable", "purpose": "Vertex that produces a dynamic subgraph at walk time"},
+        {"name": "Subgrapher", "purpose": "Vertex that itself is a graph"}
+      ],
+      "key_types": [
+        {"name": "Graph", "purpose": "Undirected base: vertices Set, bidirectional adjacency maps"},
+        {"name": "AcyclicGraph", "embeds": "Graph", "purpose": "Acyclicity-enforcing specialization with topological walk"},
+        {"name": "Walker", "purpose": "Concurrent dependency-respecting walker; spawns goroutines per vertex; collects diagnostics; upstream failures suppress downstream noise"},
+        {"name": "Set", "kind": "map[interface{}]interface{}", "purpose": "Hash-set; elements optionally implement Hashable"}
+      ],
+      "key_functions": [
+        "AcyclicGraph.Walk(cb WalkFunc) tfdiags.Diagnostics — parallel concurrent walk",
+        "AcyclicGraph.Validate() error — single root + no cycles",
+        "AcyclicGraph.TransitiveReduction() — O(VE) in-place edge reduction",
+        "AcyclicGraph.TopologicalOrder() / ReverseTopologicalOrder()",
+        "AcyclicGraph.Ancestors(v) / Descendents(v) (Set, error)",
+        "StronglyConnected(*Graph) [][]Vertex — Tarjan SCC for cycle detection",
+        "Walker.Update(*AcyclicGraph) — live graph mutation via diff"
+      ],
+      "patterns": [
+        "parallel DAG walk: V*2 goroutines per walk; each vertex blocks on DepsCh until all dependencies done",
+        "live graph mutation: Walker.Update() diffs old/new sets; add/remove vertices mid-walk",
+        "Tarjan SCC for cycle detection (AcyclicGraph.Cycles())",
+        "transitive reduction minimizes graph for correctness and readability"
+      ]
+    },
+    {
+      "id": "internal/tofu::Context",
+      "type": "class",
+      "name": "Context",
+      "module_path": "internal/tofu/",
+      "layer": "application",
+      "language": "go",
+      "purpose": "Central OpenTofu engine. All infrastructure operations (Plan, Apply, Validate) are methods. Walk-based execution via DAG. Manages concurrency, hooks, stop/cancel lifecycle.",
+      "key_types": [
+        {"name": "ContextOpts", "purpose": "User-configurable options: Meta, Hooks, Parallelism (default 10), Plugins, Encryption, UIInput"},
+        {"name": "ContextMeta", "purpose": "Runtime metadata: Env (workspace), OriginalWorkingDir"},
+        {"name": "Context", "purpose": "Core engine: plugins, hooks, stopHook, parallelSem, run lock (sync.Mutex+Cond), runContext, encryption"},
+        {"name": "PlanOpts", "purpose": "Plan operation options: Mode, SkipRefresh, SetVariables, Targets, Excludes, ForceReplace, ImportTargets, RemoveStatements"},
+        {"name": "ApplyOpts", "purpose": "Apply operation options: SetVariables, SuppressForgetErrorsDuringDestroy"},
+        {"name": "ContextGraphWalker", "purpose": "GraphWalker implementation; creates per-module-path BuiltinEvalContext; enforces parallelism semaphore"},
+        {"name": "BuiltinEvalContext", "purpose": "Concrete EvalContext per module path: Evaluator, VariableValues, ChangesValue, StateValue, ChecksValue, InstanceExpanderValue, etc."},
+        {"name": "Schemas", "purpose": "Container for all provider+provisioner schemas; loaded once before walk"},
+        {"name": "InputValue", "purpose": "Variable value + ValueSourceType provenance (Config/File/CLI/EnvVar/Input/Plan/Caller)"},
+        {"name": "walkOperation", "kind": "byte enum", "values": ["walkApply", "walkPlan", "walkPlanDestroy", "walkValidate", "walkDestroy", "walkImport", "walkEval"]}
+      ],
+      "key_interfaces": [
+        {"name": "EvalContext", "purpose": "Passed to every graph node Execute(); abstracts all context needed: state, changes, providers, provisioners, evaluator, instance expander, encryption"},
+        {"name": "Hook", "purpose": "Observer/interceptor for full infrastructure lifecycle; embed NilHook; HookActionHalt from any method aborts action"},
+        {"name": "GraphBuilder", "purpose": "Build(ctx, addrs.ModuleInstance) (*Graph, tfdiags.Diagnostics)"},
+        {"name": "GraphTransformer", "purpose": "Transform(ctx, *Graph) error — single-step graph mutation"},
+        {"name": "GraphWalker", "purpose": "EnterPath/ExitPath/Execute — drives concurrent graph walk"},
+        {"name": "GraphNodeExecutable", "purpose": "Execute(ctx, EvalContext, walkOperation) tfdiags.Diagnostics — node work during walk"},
+        {"name": "GraphNodeDynamicExpandable", "purpose": "DynamicExpand(EvalContext) (*Graph, error) — produces subgraph after count/for_each expansion"}
+      ],
+      "key_functions": [
+        "NewContext(opts *ContextOpts) (*Context, tfdiags.Diagnostics)",
+        "(*Context).Plan(ctx, config, prevRunState, opts) (*plans.Plan, tfdiags.Diagnostics)",
+        "(*Context).Apply(ctx, plan, config, opts) (*states.State, tfdiags.Diagnostics)",
+        "(*Context).Validate(ctx, config) tfdiags.Diagnostics",
+        "(*Context).Schemas(ctx, config, state) (*Schemas, tfdiags.Diagnostics)",
+        "(*Context).Stop() — cancels runContext, notifies hooks, blocks until run completes",
+        "(*Context).walk(ctx, graph, operation, opts) (*ContextGraphWalker, tfdiags.Diagnostics)"
+      ],
+      "patterns": [
+        "walk-based execution: Plan/Apply/Validate all build a DAG and call c.walk()",
+        "run lock: acquireRun waits for prior operation; creates cancellable runContext; Stop() cancels it",
+        "EvalContext scoping via WithPath: shallow copy per module instance path; all shared state referenced by pointer",
+        "hook system: iterates all hooks; stopHook atomically returns HookActionHalt after Stop()",
+        "three-state plan state management: State/RefreshState/PrevRunState as independent SyncState deep copies",
+        "parallelism via counting semaphore (ContextGraphWalker.Execute acquires slot before n.Execute)",
+        "experimental runtime opt-in via experimentalRuntimeEnabled() guard dispatching to new engine",
+        "schema loading concurrency: sync.WaitGroup + mutex; one goroutine per provider",
+        "pre/post plan validation gates: prePlanFindAndApplyMoves, prePlanVerifyTargetedMoves, postExpansionImportValidation"
+      ]
+    },
+    {
+      "id": "internal/tofu::graph_builders",
+      "type": "module",
+      "name": "graph_builders",
+      "module_path": "internal/tofu/",
+      "layer": "application",
+      "language": "go",
+      "purpose": "Plan and apply graph builders with ~25 ordered transformer steps each.",
+      "key_types": [
+        {"name": "BasicGraphBuilder", "purpose": "Sequentially applies GraphTransformer steps; logs diffs after each; validates result"},
+        {"name": "PlanGraphBuilder", "purpose": "Graph builder for plan/validate/import; uses concrete node factories (initPlan/initDestroy/initValidate/initImport)"},
+        {"name": "ApplyGraphBuilder", "purpose": "Graph builder for apply/destroy; builds from diff (Changes) rather than full config"},
+        {"name": "NodeAbstractResource", "purpose": "Abstract base for all resource graph nodes; implements ~10 interfaces including Referenceable, Referencer, ProviderConsumer, Targetable"},
+        {"name": "nodeExpandModule", "purpose": "Module call expansion via instances.Expander; registers module instances"},
+        {"name": "ProviderTransformer", "purpose": "Maps GraphNodeProviderConsumer → GraphNodeProvider; resolves provider addresses; sets ResolvedProvider"},
+        {"name": "ProviderConfigTransformer", "purpose": "Adds provider nodes from config tree; creates proxy nodes for module-passed providers"},
+        {"name": "MissingProviderTransformer", "purpose": "Adds implicit default provider nodes for un-declared providers"},
+        {"name": "PruneProviderTransformer", "purpose": "Removes proxy providers and unused providers"},
+        {"name": "ConfigTransformer", "purpose": "Adds node for every resource in config tree; handles import target matching"},
+        {"name": "TargetingTransformer", "purpose": "Prunes graph to targeted nodes + ancestors; or removes excluded nodes + descendants"},
+        {"name": "ReferenceTransformer", "purpose": "Adds dependency edges from HCL static analysis via ReferenceMap"},
+        {"name": "TransitiveReductionTransformer", "purpose": "Final cleanup: calls AcyclicGraph.TransitiveReduction()"},
+        {"name": "ResolvedProvider", "purpose": "Fully resolved provider binding with Instance factory fn, IsMocked, MockResources"},
+        {"name": "ProviderFunctionMapping", "kind": "map", "purpose": "module+function-addr → resolved provider instance; populated by ProviderFunctionTransformer"}
+      ],
+      "patterns": [
+        "transformer pipeline: BasicGraphBuilder.Build() iterates ordered Steps []GraphTransformer",
+        "abstract-to-concrete node promotion via factory functions at graph-build time",
+        "dynamic subgraph expansion: nodes implementing GraphNodeDynamicExpandable produce child graphs at walk time",
+        "module-scoped EvalContext: Graph.walk() calls EnterPath/ExitPath for each GraphNodeModuleInstance",
+        "proxy provider pattern: graphNodeProxyProvider resolved and removed by ProviderTransformer + PruneProviderTransformer",
+        "reference-based dependency graph via HCL static analysis (lang.ReferencesInBlock)",
+        "targeting/excluding: Ancestors() for targets; Descendents() for excludes"
+      ]
+    },
+    {
+      "id": "internal/command::Meta",
+      "type": "class",
+      "name": "Meta",
+      "module_path": "internal/command/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Shared state embedded in all command structs. Carries all injected dependencies from package main.",
+      "key_fields": [
+        "WorkingDir *workdir.Dir",
+        "View *views.View",
+        "ProviderSource getproviders.Source",
+        "ModulePackageFetcher *getmodules.PackageFetcher",
+        "Services *disco.Disco",
+        "ShutdownCh <-chan struct{}",
+        "ProviderDevOverrides map[addrs.Provider]getproviders.PackageLocalDir",
+        "UnmanagedProviders map[addrs.Provider]*plugin.ReattachConfig",
+        "AllowExperimentalFeatures bool"
+      ],
+      "key_methods": [
+        "CommandContext() context.Context",
+        "InterruptibleContext(base) (context.Context, CancelFunc) — cancels on ShutdownCh",
+        "RunOperation(ctx, be, opReq) (*RunningOperation, Diagnostics) — handles SIGINT double-tap with 5s timeout",
+        "contextOpts(ctx) (*tofu.ContextOpts, error) — builds engine ContextOpts",
+        "Workspace(ctx) (string, error) — reads TF_WORKSPACE or .terraform/environment"
+      ]
+    },
+    {
+      "id": "internal/command::ApplyCommand",
+      "type": "class",
+      "name": "ApplyCommand",
+      "module_path": "internal/command/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Implements 'tofu apply' and 'tofu destroy' (Destroy:true field). Runs: ParseApply → PrepareBackend → OperationRequest → RunOperation → render outputs.",
+      "implements": ["mitchellh/cli.Command"],
+      "run_flow": ["ParseView + ParseApply/ParseApplyDestroy", "NewApply view", "loadPluginPath", "Encryption()", "LoadPlanFile()", "PrepareBackend()", "OperationRequest()", "RunOperation()", "Render ResourceCount + Outputs"]
+    },
+    {
+      "id": "internal/command::PlanCommand",
+      "type": "class",
+      "name": "PlanCommand",
+      "module_path": "internal/command/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Implements 'tofu plan'. Returns exit code 2 when -detailed-exitcode and changes present.",
+      "implements": ["mitchellh/cli.Command"],
+      "run_flow": ["ParseView + ParsePlan", "NewPlan view", "loadPluginPath", "Encryption()", "PrepareBackend()", "OperationRequest()", "RunOperation()"]
+    },
+    {
+      "id": "internal/command::InitCommand",
+      "type": "class",
+      "name": "InitCommand",
+      "module_path": "internal/command/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Implements 'tofu init'. Downloads modules, initializes backend, installs providers, updates lock file.",
+      "implements": ["mitchellh/cli.Command"],
+      "run_flow": ["ParseInit", "store plugin path", "InterruptibleContext", "optional -from-module copy", "load root module", "setup encryption", "init backend/cloud", "read state for provider deps", "getModules()", "loadConfigWithTests()", "tofumigrate", "getProviders()", "emit InitSuccess"],
+      "patterns": ["InstallerEvents callbacks stream progress to view during provider installation"]
+    },
+    {
+      "id": "internal/command::ValidateCommand",
+      "type": "class",
+      "name": "ValidateCommand",
+      "module_path": "internal/command/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Implements 'tofu validate'. Loads config, creates tofu.Context, calls Validate(), routes through unified Results view.",
+      "implements": ["mitchellh/cli.Command"]
+    },
+    {
+      "id": "internal/command::FmtCommand",
+      "type": "class",
+      "name": "FmtCommand",
+      "module_path": "internal/command/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Implements 'tofu fmt'. Reformats .tf/.tofu/.tfvars/.tftest.hcl files using hclwrite. Exit code 3 in check mode with unformatted files.",
+      "patterns": ["delegates diff generation to system 'diff' binary", "formats token-level via formatValueExpr/formatTypeExpr", "unwraps single-expr interpolations"]
+    },
+    {
+      "id": "internal/command/views::View",
+      "type": "class",
+      "name": "View",
+      "module_path": "internal/command/views/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Root shared view type. Manages terminal streams, colorization, warning/error consolidation, diagnostics formatting.",
+      "key_methods": [
+        "NewView(streams) *View",
+        "Configure(view *arguments.View) — applies parsed global flags",
+        "Diagnostics(diags) — deduplication, consolidation, compact-warnings, color-aware formatting"
+      ],
+      "patterns": [
+        "interface-based view layer: every command has Human + JSON + Multi implementations",
+        "-json-into handled by Multi fan-out wrapper (human→stdout + JSON→file simultaneously)",
+        "OperationHuman.Plan() uses JSON plan intermediate (jsonplan.MarshalForRenderer) even for human output",
+        "ValidateJSON emits single JSON object to stdout (format_version='1.0') NOT hclog streaming",
+        "JSON_UI_VERSION = '1.2' must be bumped on schema changes"
+      ]
+    },
+    {
+      "id": "internal/command/arguments::package",
+      "type": "module",
+      "name": "arguments",
+      "module_path": "internal/command/arguments/",
+      "layer": "presentation",
+      "language": "go",
+      "purpose": "Argument parsing layer. ParseXxx functions return typed arg structs. Global flags pre-parsed by ParseView() and stripped before per-command parsing.",
+      "key_types": [
+        {"name": "ViewType", "kind": "rune", "values": ["ViewNone", "ViewHuman", "ViewJSON", "ViewRaw"]},
+        {"name": "ViewOptions", "purpose": "-json/-json-into flags; mutually exclusive; -json forces InputEnabled=false"},
+        {"name": "View", "purpose": "Global flags: NoColor, CompactWarnings, ConsolidateWarnings, ConsolidateErrors, Concise, ShowSensitive, ModuleDeprecationWarnLvl"}
+      ]
+    }
+  ],
+  "edges": [
+    {"id": "e001", "type": "calls", "source": "internal/command::ApplyCommand", "target": "internal/backend::interfaces", "via": "RunOperation"},
+    {"id": "e002", "type": "calls", "source": "internal/command::PlanCommand", "target": "internal/backend::interfaces", "via": "RunOperation"},
+    {"id": "e003", "type": "calls", "source": "internal/command::InitCommand", "target": "internal/providercache::Installer", "via": "getProviders"},
+    {"id": "e004", "type": "calls", "source": "internal/command::ValidateCommand", "target": "internal/tofu::Context", "via": "Context.Validate"},
+    {"id": "e005", "type": "calls", "source": "internal/backend/local::Local", "target": "internal/tofu::Context", "via": "Core.Plan / Core.Apply"},
+    {"id": "e006", "type": "calls", "source": "internal/backend/remote::Remote", "target": "internal/backend/local::Local", "via": "b.local.Operation() (forceLocal path)"},
+    {"id": "e007", "type": "calls", "source": "internal/tofu::Context", "target": "internal/dag::AcyclicGraph", "via": "graph.Walk()"},
+    {"id": "e008", "type": "calls", "source": "internal/tofu::graph_builders", "target": "internal/addrs::package", "via": "address resolution in transformers"},
+    {"id": "e009", "type": "calls", "source": "internal/tofu::graph_builders", "target": "internal/configs::package", "via": "Config references in transformers"},
+    {"id": "e010", "type": "calls", "source": "internal/tofu::Context", "target": "internal/plans::package", "via": "Plan.Changes, ChangesSync"},
+    {"id": "e011", "type": "calls", "source": "internal/tofu::Context", "target": "internal/states::package", "via": "SyncState operations"},
+    {"id": "e012", "type": "calls", "source": "internal/tofu::Context", "target": "internal/providers::Interface", "via": "contextPlugins.NewProviderInstance"},
+    {"id": "e013", "type": "calls", "source": "internal/plugin::GRPCProvider", "target": "internal/providers::Interface", "via": "implements"},
+    {"id": "e014", "type": "calls", "source": "internal/plugin6::GRPCProvider", "target": "internal/providers::Interface", "via": "implements"},
+    {"id": "e015", "type": "calls", "source": "internal/providercache::Installer", "target": "internal/getproviders::package", "via": "Source.AvailableVersions + PackageMeta"},
+    {"id": "e016", "type": "calls", "source": "internal/backend::interfaces", "target": "internal/encryption::Encryption", "via": "encryption.State() / encryption.Plan()"},
+    {"id": "e017", "type": "calls", "source": "internal/configs::package", "target": "internal/addrs::package", "via": "provider FQN resolution, module addresses"},
+    {"id": "e018", "type": "calls", "source": "internal/plans::package", "target": "internal/addrs::package", "via": "AbsResourceInstance, AbsProviderConfig addresses"},
+    {"id": "e019", "type": "calls", "source": "internal/states::package", "target": "internal/addrs::package", "via": "resource instance and module instance addresses"},
+    {"id": "e020", "type": "calls", "source": "cmd/tofu::main", "target": "internal/command::Meta", "via": "initCommands shared Meta construction"},
+    {"id": "e021", "type": "calls", "source": "cmd/tofu::main", "target": "internal/getproviders::package", "via": "providerSource() construction"},
+    {"id": "e022", "type": "calls", "source": "internal/command/views::View", "target": "internal/command/arguments::package", "via": "ParseView() Configure()"},
+    {"id": "e023", "type": "calls", "source": "internal/backend/remote-state/s3::Backend", "target": "internal/backend::interfaces", "via": "implements backend.Backend"},
+    {"id": "e024", "type": "calls", "source": "internal/backend/remote-state/gcs::Backend", "target": "internal/backend::interfaces", "via": "implements backend.Backend"},
+    {"id": "e025", "type": "calls", "source": "internal/backend/remote-state/azure::Backend", "target": "internal/backend::interfaces", "via": "implements backend.Backend"}
+  ],
+  "conventions": {
+    "observed_patterns": [
+      "Dual-form pattern: every change/state type exists in decoded (cty.Value) and serialized (DynamicValue/JSON bytes 'Src') forms with Encode/Decode converters",
+      "SyncWrapper pattern: mutable shared data structures (State, Changes) have a SyncState/ChangesSync wrapper that adds mutex protection and deep-copy on read",
+      "Transformer pipeline: graph construction via ordered []GraphTransformer steps; each step is independently testable",
+      "Interface sealing via unexported sigil methods (addrs package Referenceable, Targetable, etc.)",
+      "Three-context graceful shutdown: ctx (values only) → stopCtx (graceful stop) → cancelCtx (immediate abort)",
+      "Factory function pattern: command factories, provider factories, node factories — all lazy construction",
+      "Hook system: observer/interceptor pattern for infrastructure lifecycle events; HookActionHalt for cooperative cancellation",
+      "Abstract-to-concrete node promotion: graph builders accept factory functions to convert abstract nodes to operation-specific concrete nodes",
+      "Static evaluation at config load time: resolves module sources, backend, provider for_each before runtime",
+      "Envelope encryption: data key metadata stored alongside ciphertext in JSON envelope; fallback chain for migration",
+      "Parallel operations protected by per-operation flock files (provider installation) or semaphore (graph walk)",
+      "Address provenance tracking: every variable value carries a ValueSourceType rune indicating its origin"
+    ],
+    "naming": {
+      "interfaces": "Named by capability without I prefix (Backend, Provider, Encryption, Method)",
+      "sync_wrappers": "*Sync suffix (ChangesSync, SyncState)",
+      "serialized_forms": "*Src suffix (ResourceInstanceChangeSrc, ChangeSrc, ResourceInstanceObjectSrc)",
+      "graph_nodes": "node* prefix (lowercase, unexported) for concrete; Node* prefix (exported) for abstract/public",
+      "graph_transformers": "*Transformer suffix",
+      "commands": "*Command suffix in internal/command/",
+      "views": "*Human/*JSON/*Multi implementation naming in internal/command/views/",
+      "backends": "internal/backend/remote-state/<name>/ for state backends"
+    },
+    "testing": {
+      "framework": "stdlib testing package + go test",
+      "test_file_pattern": "*_test.go (635 test files)",
+      "e2e_tests": "internal/command/e2etest/",
+      "equivalence_tests": "testing/equivalence-tests/",
+      "mock_pattern": "go.uber.org/mock/mockgen for generated mocks",
+      "test_helpers": "BuildState() / BuildChanges() convenience constructors, OverrideForTesting() for experiments",
+      "provider_mocking": "testingOverrides struct in command.Meta for injecting mock providers without plugin discovery"
+    },
+    "error_handling": {
+      "primary_type": "tfdiags.Diagnostics (accumulating, not early-exit)",
+      "hcl_errors": "hcl.Diagnostics for config parsing layer",
+      "grpc_errors": "grpcErr() helper maps gRPC status to tfdiags.Diagnostics",
+      "provider_errors": "Typed errors in getproviders (ErrHostNoProviders, ErrProviderNotFound, etc.) and encryption (ErrKeyProviderFailure, ErrCryptoFailure, etc.)"
+    }
+  }
+}
